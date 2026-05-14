@@ -121,22 +121,75 @@ ON CONFLICT (username) DO NOTHING`, user.username, hash, user.role, user.name)
 		}
 	}
 
-	var count int
-	if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM announcements`).Scan(&count); err != nil {
+	var adminID int64
+	if err := s.DB.QueryRowContext(ctx, `SELECT id FROM users WHERE username = 'admin'`).Scan(&adminID); err != nil {
 		return err
 	}
-	if count == 0 {
-		var categoryID, adminID int64
-		if err := s.DB.QueryRowContext(ctx, `SELECT id FROM categories WHERE name = 'IT'`).Scan(&categoryID); err != nil {
+
+	demos := []struct {
+		title        string
+		content      string
+		categoryName string
+		status       string
+		publishAt    string
+		expiresAt    *string
+	}{
+		{
+			title:        "Announcement system launched",
+			content:      "The internal announcement system is online. Please sign in, review notices, and mark them as read.",
+			categoryName: "IT",
+			status:       "published",
+			publishAt:    "now()",
+		},
+		{
+			title:        "Quarterly maintenance window",
+			content:      "Core services will be maintained this Friday evening. Please save work before the maintenance window starts.",
+			categoryName: "IT",
+			status:       "scheduled",
+			publishAt:    "now() + interval '2 hours'",
+		},
+		{
+			title:        "Employee handbook draft",
+			content:      "The HR team is reviewing the next handbook update. Editors can revise this draft before publishing.",
+			categoryName: "HR",
+			status:       "draft",
+			publishAt:    "NULL",
+		},
+		{
+			title:        "Annual health check registration",
+			content:      "Employees can register for the annual health check from Monday. Please complete the form before the deadline.",
+			categoryName: "HR",
+			status:       "published",
+			publishAt:    "now() - interval '1 day'",
+		},
+		{
+			title:        "Town hall replay archived",
+			content:      "The previous town hall notice has been archived. Managers may still review it from the admin dashboard.",
+			categoryName: "Event",
+			status:       "archived",
+			publishAt:    "now() - interval '14 days'",
+		},
+		{
+			title:        "Product training workshop",
+			content:      "A product training workshop will be held next week. The session is open to all departments.",
+			categoryName: "Event",
+			status:       "published",
+			publishAt:    "now() - interval '3 hours'",
+		},
+	}
+
+	for _, demo := range demos {
+		var categoryID int64
+		if err := s.DB.QueryRowContext(ctx, `SELECT id FROM categories WHERE name = $1`, demo.categoryName).Scan(&categoryID); err != nil {
 			return err
 		}
-		if err := s.DB.QueryRowContext(ctx, `SELECT id FROM users WHERE username = 'admin'`).Scan(&adminID); err != nil {
+		query := fmt.Sprintf(`
+INSERT INTO announcements (title, content, category_id, status, publish_at, expires_at, created_by)
+SELECT $1, $2, $3, $4, %s, NULL, $5
+WHERE NOT EXISTS (SELECT 1 FROM announcements WHERE title = $1)`, demo.publishAt)
+		if _, err := s.DB.ExecContext(ctx, query, demo.title, demo.content, categoryID, demo.status, adminID); err != nil {
 			return err
 		}
-		_, err := s.DB.ExecContext(ctx, `
-INSERT INTO announcements (title, content, category_id, status, publish_at, created_by)
-VALUES ($1, $2, $3, 'published', now(), $4)`, "Announcement system launched", "The internal announcement system is online. Please sign in, review notices, and mark them as read.", categoryID, adminID)
-		return err
 	}
 	return nil
 }
