@@ -248,7 +248,7 @@ type AnnouncementFilter struct {
 	Query      string
 	CategoryID int64
 	Status     string
-	UnreadOnly bool
+	ReadState  string
 }
 
 func (s *Store) Announcements(ctx context.Context, filter AnnouncementFilter) ([]models.Announcement, error) {
@@ -279,8 +279,11 @@ WHERE 1 = 1`
 		args = append(args, filter.Status)
 		query += fmt.Sprintf(` AND a.status = $%d`, len(args))
 	}
-	if filter.UnreadOnly {
+	switch filter.ReadState {
+	case "unread":
 		query += ` AND NOT EXISTS (SELECT 1 FROM announcement_reads ar WHERE ar.announcement_id = a.id AND ar.user_id = $1)`
+	case "read":
+		query += ` AND EXISTS (SELECT 1 FROM announcement_reads ar WHERE ar.announcement_id = a.id AND ar.user_id = $1)`
 	}
 	query += ` ORDER BY COALESCE(a.publish_at, a.created_at) DESC, a.id DESC`
 	rows, err := s.DB.QueryContext(ctx, query, args...)

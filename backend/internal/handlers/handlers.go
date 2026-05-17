@@ -124,14 +124,17 @@ func (s *Server) createCategory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) announcements(w http.ResponseWriter, r *http.Request) {
 	user := auth.CurrentUser(r)
 	categoryID, _ := strconv.ParseInt(r.URL.Query().Get("categoryId"), 10, 64)
-	unreadOnly := r.URL.Query().Get("unread") == "true"
+	readState := strings.TrimSpace(r.URL.Query().Get("read"))
+	if readState == "" && r.URL.Query().Get("unread") == "true" {
+		readState = "unread"
+	}
 	filter := db.AnnouncementFilter{
 		UserID:     user.UserID,
 		Role:       user.Role,
 		Query:      strings.TrimSpace(r.URL.Query().Get("q")),
 		CategoryID: categoryID,
 		Status:     strings.TrimSpace(r.URL.Query().Get("status")),
-		UnreadOnly: unreadOnly,
+		ReadState:  readState,
 	}
 	announcements, err := s.Store.Announcements(r.Context(), filter)
 	if err != nil {
@@ -304,4 +307,3 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }
-

@@ -6,7 +6,6 @@ import {
   Check,
   Edit3,
   Eye,
-  Filter,
   LogOut,
   Megaphone,
   Plus,
@@ -95,7 +94,7 @@ function Dashboard({ api, user, onLogout }) {
   const [announcements, setAnnouncements] = useState([]);
   const [categories, setCategories] = useState([]);
   const [users, setUsers] = useState([]);
-  const [filters, setFilters] = useState({ q: "", categoryId: "", status: "", unread: "false" });
+  const [filters, setFilters] = useState({ q: "", categoryId: "", status: "", read: "" });
   const [searchText, setSearchText] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState(null);
@@ -124,7 +123,7 @@ function Dashboard({ api, user, onLogout }) {
     }
   }
 
-  useEffect(() => { load(); }, [filters.q, filters.categoryId, filters.status, filters.unread]);
+  useEffect(() => { load(); }, [filters.q, filters.categoryId, filters.status, filters.read]);
 
   function applySearch(e) {
     e?.preventDefault();
@@ -235,9 +234,11 @@ function Dashboard({ api, user, onLogout }) {
               <option value="archived">封存</option>
             </select>
           )}
-          <button className={filters.unread === "true" ? "active" : ""} onClick={() => setFilters({ ...filters, unread: filters.unread === "true" ? "false" : "true" })}>
-            <Filter size={17} />未讀
-          </button>
+          <select value={filters.read} onChange={(e) => setFilters({ ...filters, read: e.target.value })} aria-label="閱讀狀態">
+            <option value="">全部</option>
+            <option value="unread">未讀取</option>
+            <option value="read">已讀取</option>
+          </select>
         </section>
         {(filters.q || searchText.trim()) && (
           <div className="search-summary">
