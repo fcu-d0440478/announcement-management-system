@@ -7,4 +7,4 @@ build/
 tmp/
 coverage/
 backend/announcement-api
-
+.playwright-mcp/
