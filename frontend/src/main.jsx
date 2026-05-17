@@ -96,6 +96,7 @@ function Dashboard({ api, user, onLogout }) {
   const [categories, setCategories] = useState([]);
   const [users, setUsers] = useState([]);
   const [filters, setFilters] = useState({ q: "", categoryId: "", status: "", unread: "false" });
+  const [searchText, setSearchText] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState(null);
   const [message, setMessage] = useState("");
@@ -118,6 +119,16 @@ function Dashboard({ api, user, onLogout }) {
   }
 
   useEffect(() => { load(); }, [filters.q, filters.categoryId, filters.status, filters.unread]);
+
+  function applySearch(e) {
+    e?.preventDefault();
+    setFilters({ ...filters, q: searchText.trim() });
+  }
+
+  function clearSearch() {
+    setSearchText("");
+    setFilters({ ...filters, q: "" });
+  }
 
   function edit(item) {
     setEditing(item.id);
@@ -192,7 +203,18 @@ function Dashboard({ api, user, onLogout }) {
         </header>
 
         <section className="filters">
-          <div className="searchbox"><Search size={18} /><input placeholder="搜尋標題或內容" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} /></div>
+          <form className="search-form" onSubmit={applySearch}>
+            <div className="searchbox">
+              <Search size={18} />
+              <input
+                placeholder="搜尋標題或內容"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+              />
+            </div>
+            <button type="submit"><Search size={17} />搜尋</button>
+            {filters.q && <button type="button" className="ghost icon-only" onClick={clearSearch} title="清除搜尋"><X size={18} /></button>}
+          </form>
           <select value={filters.categoryId} onChange={(e) => setFilters({ ...filters, categoryId: e.target.value })}>
             <option value="">全部分類</option>
             {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
@@ -210,6 +232,7 @@ function Dashboard({ api, user, onLogout }) {
             <Filter size={17} />未讀
           </button>
         </section>
+        {filters.q && <div className="search-summary">搜尋「{filters.q}」：{announcements.length} 筆結果</div>}
 
         {(error || message) && <div className={error ? "error banner" : "success banner"}>{error || message}</div>}
 
@@ -316,4 +339,3 @@ function formatDate(value) {
 }
 
 createRoot(document.getElementById("root")).render(<App />);
-

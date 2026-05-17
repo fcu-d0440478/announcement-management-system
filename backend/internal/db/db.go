@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"announcement-management-system/backend/internal/auth"
@@ -265,8 +266,10 @@ WHERE 1 = 1`
 		query += ` AND a.status = 'published' AND (a.publish_at IS NULL OR a.publish_at <= now()) AND (a.expires_at IS NULL OR a.expires_at > now())`
 	}
 	if filter.Query != "" {
-		args = append(args, "%"+filter.Query+"%")
-		query += fmt.Sprintf(` AND (a.title ILIKE $%d OR a.content ILIKE $%d)`, len(args), len(args))
+		for _, term := range strings.Fields(filter.Query) {
+			args = append(args, "%"+escapeLike(term)+"%")
+			query += fmt.Sprintf(` AND (a.title ILIKE $%d ESCAPE '\' OR a.content ILIKE $%d ESCAPE '\')`, len(args), len(args))
+		}
 	}
 	if filter.CategoryID > 0 {
 		args = append(args, filter.CategoryID)
@@ -374,6 +377,13 @@ func (s *Store) PromoteScheduled(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+func escapeLike(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `%`, `\%`)
+	value = strings.ReplaceAll(value, `_`, `\_`)
+	return value
 }
 
 func ValidateAnnouncement(announcement models.Announcement) error {

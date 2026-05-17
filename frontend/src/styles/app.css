@@ -110,13 +110,27 @@ label { display: grid; gap: 7px; font-size: 14px; color: var(--muted); }
 .stat strong { font-size: 24px; }
 .filters {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 180px 150px auto;
+  grid-template-columns: minmax(360px, 1fr) 180px 150px auto;
   gap: 10px;
   margin-bottom: 16px;
+}
+.search-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto auto;
+  gap: 8px;
 }
 .searchbox { position: relative; }
 .searchbox svg { position: absolute; left: 12px; top: 12px; color: var(--muted); }
 .searchbox input { padding-left: 40px; }
+.icon-only {
+  width: 42px;
+  padding: 0;
+}
+.search-summary {
+  color: var(--muted);
+  font-size: 14px;
+  margin: -4px 0 16px;
+}
 .banner { margin-bottom: 16px; }
 .error { color: #8f1f1f; }
 .success { color: var(--green); }
@@ -169,7 +183,7 @@ time { color: var(--muted); font-size: 13px; }
   .workspace { padding: 18px; }
   .topbar, .announcement-head, .announcement footer { align-items: flex-start; flex-direction: column; }
   .filters { grid-template-columns: 1fr; }
+  .search-form { grid-template-columns: 1fr auto auto; }
   .topbar h1 { font-size: 30px; }
   .login-panel { padding: 24px; }
 }
-
