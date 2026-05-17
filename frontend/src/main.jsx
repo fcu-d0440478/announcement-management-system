@@ -116,8 +116,8 @@ function Dashboard({ api, user, onLogout }) {
         api.announcements(params),
         api.categories(),
       ]);
-      setAnnouncements(announcementData);
-      setCategories(categoryData);
+      setAnnouncements(Array.isArray(announcementData) ? announcementData : []);
+      setCategories(Array.isArray(categoryData) ? categoryData : []);
       if (user.role === "admin") setUsers(await api.users());
     } catch (err) {
       setError(err.message);

@@ -288,7 +288,7 @@ WHERE 1 = 1`
 		return nil, err
 	}
 	defer rows.Close()
-	var announcements []models.Announcement
+	announcements := make([]models.Announcement, 0)
 	for rows.Next() {
 		var announcement models.Announcement
 		if err := rows.Scan(&announcement.ID, &announcement.Title, &announcement.Content, &announcement.CategoryID, &announcement.Category,
