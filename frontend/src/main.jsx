@@ -101,6 +101,12 @@ function Dashboard({ api, user, onLogout }) {
   const [editing, setEditing] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const displayedAnnouncements = announcements.filter((item) => {
+    const terms = searchText.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) return true;
+    const haystack = `${item.title} ${item.content}`.toLowerCase();
+    return terms.every((term) => haystack.includes(term));
+  });
 
   async function load() {
     setError("");
@@ -196,8 +202,8 @@ function Dashboard({ api, user, onLogout }) {
             <p>{canManage ? "管理發布、排程與已讀狀態" : "查看公司公告並回報已讀"}</p>
           </div>
           <div className="stat-grid">
-            <Stat icon={<Bell />} label="總公告" value={announcements.length} />
-            <Stat icon={<Eye />} label="未讀" value={announcements.filter((a) => !a.isRead).length} />
+            <Stat icon={<Bell />} label="總公告" value={displayedAnnouncements.length} />
+            <Stat icon={<Eye />} label="未讀" value={displayedAnnouncements.filter((a) => !a.isRead).length} />
             {user.role === "admin" && <Stat icon={<Shield />} label="使用者" value={users.length} />}
           </div>
         </header>
@@ -210,6 +216,7 @@ function Dashboard({ api, user, onLogout }) {
                 placeholder="搜尋標題或內容"
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
+                autoComplete="off"
               />
             </div>
             <button type="submit"><Search size={17} />搜尋</button>
@@ -232,13 +239,17 @@ function Dashboard({ api, user, onLogout }) {
             <Filter size={17} />未讀
           </button>
         </section>
-        {filters.q && <div className="search-summary">搜尋「{filters.q}」：{announcements.length} 筆結果</div>}
+        {(filters.q || searchText.trim()) && (
+          <div className="search-summary">
+            搜尋「{searchText.trim() || filters.q}」：{displayedAnnouncements.length} 筆結果
+          </div>
+        )}
 
         {(error || message) && <div className={error ? "error banner" : "success banner"}>{error || message}</div>}
 
         <div className={canManage ? "content-grid" : "content-grid single"}>
           <section className="announcement-list">
-            {announcements.map((item) => (
+            {displayedAnnouncements.map((item) => (
               <article className={`announcement ${item.isRead ? "" : "unread"}`} key={item.id}>
                 <div className="announcement-head">
                   <div>
@@ -259,7 +270,7 @@ function Dashboard({ api, user, onLogout }) {
                 </footer>
               </article>
             ))}
-            {announcements.length === 0 && <div className="empty">目前沒有符合條件的公告。</div>}
+            {displayedAnnouncements.length === 0 && <div className="empty">目前沒有符合條件的公告，請調整搜尋文字或篩選條件。</div>}
           </section>
 
           {canManage && (
