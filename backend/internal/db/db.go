@@ -79,6 +79,9 @@ CREATE TABLE IF NOT EXISTS announcement_reads (
 CREATE INDEX IF NOT EXISTS idx_announcements_status_publish ON announcements(status, publish_at);
 CREATE INDEX IF NOT EXISTS idx_announcements_category ON announcements(category_id);
 CREATE INDEX IF NOT EXISTS idx_announcements_search ON announcements USING gin (to_tsvector('simple', title || ' ' || content));
+
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS updated_by BIGINT REFERENCES users(id);
+UPDATE announcements SET updated_by = created_by WHERE updated_by IS NULL;
 `
 	if _, err := s.DB.ExecContext(ctx, schema); err != nil {
 		return err
@@ -185,8 +188,8 @@ ON CONFLICT (username) DO NOTHING`, user.username, hash, user.role, user.name)
 			return err
 		}
 		query := fmt.Sprintf(`
-INSERT INTO announcements (title, content, category_id, status, publish_at, expires_at, created_by)
-SELECT $1, $2, $3, $4, %s, NULL, $5
+INSERT INTO announcements (title, content, category_id, status, publish_at, expires_at, created_by, updated_by)
+SELECT $1, $2, $3, $4, %s, NULL, $5, $5
 WHERE NOT EXISTS (SELECT 1 FROM announcements WHERE title = $1)`, demo.publishAt)
 		if _, err := s.DB.ExecContext(ctx, query, demo.title, demo.content, categoryID, demo.status, adminID); err != nil {
 			return err
@@ -255,12 +258,23 @@ func (s *Store) Announcements(ctx context.Context, filter AnnouncementFilter) ([
 	args := []interface{}{filter.UserID}
 	query := `
 SELECT a.id, a.title, a.content, a.category_id, c.name, a.status, a.publish_at, a.expires_at,
-       a.created_by, u.name, a.created_at, a.updated_at,
+       a.created_by, u.name, COALESCE(editor.name, u.name) AS last_editor_name,
+       last_read.name AS last_reader_name, last_read.read_at AS last_read_at,
+       a.created_at, a.updated_at,
        EXISTS (SELECT 1 FROM announcement_reads ar WHERE ar.announcement_id = a.id AND ar.user_id = $1) AS is_read,
        (SELECT COUNT(*) FROM announcement_reads ar WHERE ar.announcement_id = a.id) AS read_count
 FROM announcements a
 JOIN categories c ON c.id = a.category_id
 JOIN users u ON u.id = a.created_by
+LEFT JOIN users editor ON editor.id = a.updated_by
+LEFT JOIN LATERAL (
+	SELECT ru.name, ar.read_at
+	FROM announcement_reads ar
+	JOIN users ru ON ru.id = ar.user_id
+	WHERE ar.announcement_id = a.id
+	ORDER BY ar.read_at DESC
+	LIMIT 1
+) last_read ON true
 WHERE 1 = 1`
 	if !auth.CanManage(filter.Role) {
 		query += ` AND a.status = 'published' AND (a.publish_at IS NULL OR a.publish_at <= now()) AND (a.expires_at IS NULL OR a.expires_at > now())`
@@ -296,6 +310,7 @@ WHERE 1 = 1`
 		var announcement models.Announcement
 		if err := rows.Scan(&announcement.ID, &announcement.Title, &announcement.Content, &announcement.CategoryID, &announcement.Category,
 			&announcement.Status, &announcement.PublishAt, &announcement.ExpiresAt, &announcement.CreatedBy, &announcement.AuthorName,
+			&announcement.LastEditorName, &announcement.LastReaderName, &announcement.LastReadAt,
 			&announcement.CreatedAt, &announcement.UpdatedAt, &announcement.IsRead, &announcement.ReadCount); err != nil {
 			return nil, err
 		}
@@ -319,18 +334,18 @@ func (s *Store) Announcement(ctx context.Context, id, userID int64, role string)
 
 func (s *Store) CreateAnnouncement(ctx context.Context, announcement models.Announcement) (models.Announcement, error) {
 	err := s.DB.QueryRowContext(ctx, `
-INSERT INTO announcements (title, content, category_id, status, publish_at, expires_at, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO announcements (title, content, category_id, status, publish_at, expires_at, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
 RETURNING id, created_at, updated_at`, announcement.Title, announcement.Content, announcement.CategoryID, announcement.Status, announcement.PublishAt, announcement.ExpiresAt, announcement.CreatedBy).
 		Scan(&announcement.ID, &announcement.CreatedAt, &announcement.UpdatedAt)
 	return announcement, err
 }
 
-func (s *Store) UpdateAnnouncement(ctx context.Context, id int64, announcement models.Announcement) error {
+func (s *Store) UpdateAnnouncement(ctx context.Context, id int64, announcement models.Announcement, updatedBy int64) error {
 	result, err := s.DB.ExecContext(ctx, `
 UPDATE announcements
-SET title = $1, content = $2, category_id = $3, status = $4, publish_at = $5, expires_at = $6, updated_at = now()
-WHERE id = $7`, announcement.Title, announcement.Content, announcement.CategoryID, announcement.Status, announcement.PublishAt, announcement.ExpiresAt, id)
+SET title = $1, content = $2, category_id = $3, status = $4, publish_at = $5, expires_at = $6, updated_by = $7, updated_at = now()
+WHERE id = $8`, announcement.Title, announcement.Content, announcement.CategoryID, announcement.Status, announcement.PublishAt, announcement.ExpiresAt, updatedBy, id)
 	if err != nil {
 		return err
 	}

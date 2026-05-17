@@ -209,7 +209,7 @@ func (s *Server) updateAnnouncement(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.Store.UpdateAnnouncement(r.Context(), id, announcement); err != nil {
+	if err := s.Store.UpdateAnnouncement(r.Context(), id, announcement, user.UserID); err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, sql.ErrNoRows) {
 			status = http.StatusNotFound

@@ -101,6 +101,8 @@ function Dashboard({ api, user, onLogout }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const displayedAnnouncements = announcements.filter((item) => {
+    if (filters.read === "unread" && item.isRead) return false;
+    if (filters.read === "read" && !item.isRead) return false;
     const terms = searchText.trim().toLowerCase().split(/\s+/).filter(Boolean);
     if (terms.length === 0) return true;
     const haystack = `${item.title} ${item.content}`.toLowerCase();
@@ -262,7 +264,11 @@ function Dashboard({ api, user, onLogout }) {
                 <h2>{item.title}</h2>
                 <p>{item.content}</p>
                 <footer>
-                  <span>{item.authorName} · 已讀 {item.readCount}</span>
+                  <span>
+                    建立 {item.authorName} · 最後編輯 {item.lastEditorName || item.authorName} ·
+                    最後已讀 {item.lastReaderName ? `${item.lastReaderName} ${formatDate(item.lastReadAt)}` : "尚無"} ·
+                    已讀 {item.readCount}
+                  </span>
                   <div className="actions">
                     {!item.isRead && <button onClick={() => markRead(item.id)}><Check size={16} />已讀</button>}
                     {canManage && <button onClick={() => edit(item)}><Edit3 size={16} />編輯</button>}

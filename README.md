@@ -62,6 +62,7 @@
 | publish_at | 發布時間，可用於排程 |
 | expires_at | 到期時間 |
 | created_by | 建立者 |
+| updated_by | 最後編輯者 |
 | created_at / updated_at | 建立與更新時間 |
 
 ### announcement_reads
@@ -139,4 +140,3 @@ docker compose up --build
 ## AI 輔助使用情況
 
 本專案使用 AI 輔助產生初版架構、Go API、React UI、Docker Compose 與 README。實作內容仍依需求檢查並透過建置與格式化驗證。
-

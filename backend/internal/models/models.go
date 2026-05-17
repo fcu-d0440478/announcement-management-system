@@ -18,19 +18,21 @@ type Category struct {
 }
 
 type Announcement struct {
-	ID          int64      `json:"id"`
-	Title       string     `json:"title"`
-	Content     string     `json:"content"`
-	CategoryID  int64      `json:"categoryId"`
-	Category    string     `json:"category"`
-	Status      string     `json:"status"`
-	PublishAt   *time.Time `json:"publishAt"`
-	ExpiresAt   *time.Time `json:"expiresAt"`
-	CreatedBy   int64      `json:"createdBy"`
-	AuthorName  string     `json:"authorName"`
-	IsRead      bool       `json:"isRead"`
-	ReadCount   int64      `json:"readCount"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
+	ID             int64      `json:"id"`
+	Title          string     `json:"title"`
+	Content        string     `json:"content"`
+	CategoryID     int64      `json:"categoryId"`
+	Category       string     `json:"category"`
+	Status         string     `json:"status"`
+	PublishAt      *time.Time `json:"publishAt"`
+	ExpiresAt      *time.Time `json:"expiresAt"`
+	CreatedBy      int64      `json:"createdBy"`
+	AuthorName     string     `json:"authorName"`
+	LastEditorName string     `json:"lastEditorName"`
+	LastReaderName *string    `json:"lastReaderName"`
+	LastReadAt     *time.Time `json:"lastReadAt"`
+	IsRead         bool       `json:"isRead"`
+	ReadCount      int64      `json:"readCount"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
 }
-
