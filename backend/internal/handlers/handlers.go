@@ -231,7 +231,7 @@ func (s *Server) deleteAnnouncement(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := s.Store.DeleteAnnouncement(r.Context(), id); err != nil {
+	if err := s.Store.DeleteAnnouncement(r.Context(), id, user.UserID); err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, sql.ErrNoRows) {
 			status = http.StatusNotFound

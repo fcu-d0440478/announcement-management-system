@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS announcements (
 	expires_at TIMESTAMPTZ,
 	created_by BIGINT NOT NULL REFERENCES users(id),
 	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+	deleted_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS announcement_reads (
@@ -76,12 +77,24 @@ CREATE TABLE IF NOT EXISTS announcement_reads (
 	PRIMARY KEY (announcement_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS audit_logs (
+	id BIGSERIAL PRIMARY KEY,
+	user_id BIGINT NOT NULL REFERENCES users(id),
+	action TEXT NOT NULL,
+	target_type TEXT NOT NULL,
+	target_id BIGINT NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS updated_by BIGINT REFERENCES users(id);
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+UPDATE announcements SET updated_by = created_by WHERE updated_by IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_announcements_status_publish ON announcements(status, publish_at);
 CREATE INDEX IF NOT EXISTS idx_announcements_category ON announcements(category_id);
 CREATE INDEX IF NOT EXISTS idx_announcements_search ON announcements USING gin (to_tsvector('simple', title || ' ' || content));
-
-ALTER TABLE announcements ADD COLUMN IF NOT EXISTS updated_by BIGINT REFERENCES users(id);
-UPDATE announcements SET updated_by = created_by WHERE updated_by IS NULL;
+CREATE INDEX IF NOT EXISTS idx_announcements_deleted_at ON announcements(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_target ON audit_logs(target_type, target_id, created_at DESC);
 `
 	if _, err := s.DB.ExecContext(ctx, schema); err != nil {
 		return err
@@ -275,7 +288,7 @@ LEFT JOIN LATERAL (
 	ORDER BY ar.read_at DESC
 	LIMIT 1
 ) last_read ON true
-WHERE 1 = 1`
+WHERE a.deleted_at IS NULL`
 	if !auth.CanManage(filter.Role) {
 		query += ` AND a.status = 'published' AND (a.publish_at IS NULL OR a.publish_at <= now()) AND (a.expires_at IS NULL OR a.expires_at > now())`
 	}
@@ -333,19 +346,40 @@ func (s *Store) Announcement(ctx context.Context, id, userID int64, role string)
 }
 
 func (s *Store) CreateAnnouncement(ctx context.Context, announcement models.Announcement) (models.Announcement, error) {
-	err := s.DB.QueryRowContext(ctx, `
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return announcement, err
+	}
+	defer tx.Rollback()
+
+	err = tx.QueryRowContext(ctx, `
 INSERT INTO announcements (title, content, category_id, status, publish_at, expires_at, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
 RETURNING id, created_at, updated_at`, announcement.Title, announcement.Content, announcement.CategoryID, announcement.Status, announcement.PublishAt, announcement.ExpiresAt, announcement.CreatedBy).
 		Scan(&announcement.ID, &announcement.CreatedAt, &announcement.UpdatedAt)
+	if err != nil {
+		return announcement, err
+	}
+	if err := insertAuditLog(ctx, tx, announcement.CreatedBy, "create", "announcement", announcement.ID); err != nil {
+		return announcement, err
+	}
+	if err := tx.Commit(); err != nil {
+		return announcement, err
+	}
 	return announcement, err
 }
 
 func (s *Store) UpdateAnnouncement(ctx context.Context, id int64, announcement models.Announcement, updatedBy int64) error {
-	result, err := s.DB.ExecContext(ctx, `
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `
 UPDATE announcements
 SET title = $1, content = $2, category_id = $3, status = $4, publish_at = $5, expires_at = $6, updated_by = $7, updated_at = now()
-WHERE id = $8`, announcement.Title, announcement.Content, announcement.CategoryID, announcement.Status, announcement.PublishAt, announcement.ExpiresAt, updatedBy, id)
+WHERE id = $8 AND deleted_at IS NULL`, announcement.Title, announcement.Content, announcement.CategoryID, announcement.Status, announcement.PublishAt, announcement.ExpiresAt, updatedBy, id)
 	if err != nil {
 		return err
 	}
@@ -356,11 +390,20 @@ WHERE id = $8`, announcement.Title, announcement.Content, announcement.CategoryI
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
-	return nil
+	if err := insertAuditLog(ctx, tx, updatedBy, "update", "announcement", id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
-func (s *Store) DeleteAnnouncement(ctx context.Context, id int64) error {
-	result, err := s.DB.ExecContext(ctx, `DELETE FROM announcements WHERE id = $1`, id)
+func (s *Store) DeleteAnnouncement(ctx context.Context, id int64, deletedBy int64) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `UPDATE announcements SET deleted_at = now(), updated_by = $2, updated_at = now() WHERE id = $1 AND deleted_at IS NULL`, id, deletedBy)
 	if err != nil {
 		return err
 	}
@@ -371,7 +414,10 @@ func (s *Store) DeleteAnnouncement(ctx context.Context, id int64) error {
 	if affected == 0 {
 		return sql.ErrNoRows
 	}
-	return nil
+	if err := insertAuditLog(ctx, tx, deletedBy, "delete", "announcement", id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) MarkRead(ctx context.Context, announcementID, userID int64) error {
@@ -390,11 +436,18 @@ func (s *Store) MarkRead(ctx context.Context, announcementID, userID int64) erro
 }
 
 func (s *Store) PromoteScheduled(ctx context.Context) (int64, error) {
-	result, err := s.DB.ExecContext(ctx, `UPDATE announcements SET status = 'published', updated_at = now() WHERE status = 'scheduled' AND publish_at <= now()`)
+	result, err := s.DB.ExecContext(ctx, `UPDATE announcements SET status = 'published', updated_at = now() WHERE status = 'scheduled' AND publish_at <= now() AND deleted_at IS NULL`)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+func insertAuditLog(ctx context.Context, tx *sql.Tx, userID int64, action string, targetType string, targetID int64) error {
+	_, err := tx.ExecContext(ctx, `
+INSERT INTO audit_logs (user_id, action, target_type, target_id)
+VALUES ($1, $2, $3, $4)`, userID, action, targetType, targetID)
+	return err
 }
 
 func escapeLike(value string) string {

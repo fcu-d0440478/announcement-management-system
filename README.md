@@ -63,6 +63,7 @@
 | expires_at | 到期時間 |
 | created_by | 建立者 |
 | updated_by | 最後編輯者 |
+| deleted_at | 軟刪除時間，未刪除為 `NULL` |
 | created_at / updated_at | 建立與更新時間 |
 
 ### announcement_reads
@@ -72,6 +73,17 @@
 | announcement_id | 公告 ID |
 | user_id | 使用者 ID |
 | read_at | 已讀時間 |
+
+### audit_logs
+
+| 欄位 | 說明 |
+| --- | --- |
+| id | 操作紀錄 ID |
+| user_id | 操作者 |
+| action | `create`、`update`、`delete` |
+| target_type | 目標類型，目前為 `announcement` |
+| target_id | 目標 ID |
+| created_at | 操作時間 |
 
 ## 如何啟動
 
@@ -104,11 +116,11 @@ docker compose up --build
 | GET | `/api/users` | 使用者列表，限 admin |
 | GET | `/api/categories` | 分類列表 |
 | POST | `/api/categories` | 新增分類，限 admin |
-| GET | `/api/announcements` | 公告列表，支援 `q`、`categoryId`、`status`、`unread` |
+| GET | `/api/announcements` | 公告列表，支援 `q`、`categoryId`、`status`、`read` |
 | POST | `/api/announcements` | 新增公告，限 admin/editor |
 | GET | `/api/announcements/{id}` | 公告詳細 |
 | PUT | `/api/announcements/{id}` | 更新公告，限 admin/editor |
-| DELETE | `/api/announcements/{id}` | 刪除公告，限 admin/editor |
+| DELETE | `/api/announcements/{id}` | 軟刪除公告，限 admin/editor |
 | POST | `/api/announcements/{id}/read` | 標記已讀 |
 
 ## 實作範圍與取捨
@@ -120,7 +132,7 @@ docker compose up --build
 - 公告 CRUD
 - 公告分類
 - 已讀 / 未讀與已讀數統計
-- 公告搜尋與分類、狀態、未讀篩選
+- 公告搜尋與分類、狀態、已讀狀態篩選
 - PostgreSQL 實際資料庫儲存
 - Docker Compose 一鍵啟動前端、後端、資料庫
 
@@ -132,10 +144,12 @@ docker compose up --build
 
 ## 加分項
 
-我實作了兩個真實產品中常見且重要的點：
+我實作了四個真實產品中常見且重要的點：
 
 1. 排程發布：公告可設定 `scheduled` 與 `publish_at`，後端背景 scheduler 每 30 秒將到期排程公告轉為 `published`。
 2. 公告有效期限：一般使用者只會看到 `published` 且未過期的公告，避免過期資訊繼續出現在前台。
+3. Audit Log：在真實企業系統中，公告內容可能涉及重要通知，因此需要保留操作紀錄，以便追蹤異動來源與責任歸屬。本系統新增 `audit_logs` 機制，在公告新增、修改、刪除時記錄操作者、操作類型、目標公告與操作時間。
+4. Soft Delete：真實產品通常不會直接永久刪除公告，避免法遵、稽核或歷史追蹤需要時資料已遺失。本系統刪除公告時只標記 `deleted_at`，一般查詢會排除已刪除公告，資料仍保留在資料庫中。
 
 ## AI 輔助使用情況
 
