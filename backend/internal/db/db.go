@@ -103,13 +103,26 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_target ON audit_logs(target_type, targ
 }
 
 func (s *Store) seed(ctx context.Context) error {
-	categories := []models.Category{
-		{Name: "HR", Description: "People, policy and organization notices"},
-		{Name: "IT", Description: "System maintenance and security notices"},
-		{Name: "Event", Description: "Company events and training"},
+	categories := []struct {
+		oldName     string
+		name        string
+		description string
+	}{
+		{oldName: "HR", name: "人事", description: "組織、人員與制度公告"},
+		{oldName: "IT", name: "資訊", description: "系統維護、資安與 IT 通知"},
+		{oldName: "Event", name: "活動", description: "公司活動與教育訓練"},
 	}
 	for _, category := range categories {
-		if _, err := s.DB.ExecContext(ctx, `INSERT INTO categories (name, description) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`, category.Name, category.Description); err != nil {
+		if _, err := s.DB.ExecContext(ctx, `
+UPDATE categories
+SET name = $1, description = $2
+WHERE name = $3 AND NOT EXISTS (SELECT 1 FROM categories WHERE name = $1)`, category.name, category.description, category.oldName); err != nil {
+			return err
+		}
+		if _, err := s.DB.ExecContext(ctx, `
+INSERT INTO categories (name, description)
+VALUES ($1, $2)
+ON CONFLICT (name) DO UPDATE SET description = EXCLUDED.description`, category.name, category.description); err != nil {
 			return err
 		}
 	}
@@ -120,9 +133,9 @@ func (s *Store) seed(ctx context.Context) error {
 		role     string
 		name     string
 	}{
-		{"admin", "admin123", "admin", "System Admin"},
-		{"editor", "editor123", "editor", "Announcement Editor"},
-		{"user", "user123", "user", "Employee User"},
+		{"admin", "admin123", "admin", "系統管理員"},
+		{"editor", "editor123", "editor", "公告編輯"},
+		{"user", "user123", "user", "一般員工"},
 	}
 	for _, user := range users {
 		hash, err := auth.HashPassword(user.password)
@@ -132,7 +145,7 @@ func (s *Store) seed(ctx context.Context) error {
 		_, err = s.DB.ExecContext(ctx, `
 INSERT INTO users (username, password_hash, role, name)
 VALUES ($1, $2, $3, $4)
-ON CONFLICT (username) DO NOTHING`, user.username, hash, user.role, user.name)
+ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role, name = EXCLUDED.name`, user.username, hash, user.role, user.name)
 		if err != nil {
 			return err
 		}
@@ -144,6 +157,7 @@ ON CONFLICT (username) DO NOTHING`, user.username, hash, user.role, user.name)
 	}
 
 	demos := []struct {
+		oldTitle     string
 		title        string
 		content      string
 		categoryName string
@@ -152,44 +166,50 @@ ON CONFLICT (username) DO NOTHING`, user.username, hash, user.role, user.name)
 		expiresAt    *string
 	}{
 		{
-			title:        "Announcement system launched",
-			content:      "The internal announcement system is online. Please sign in, review notices, and mark them as read.",
-			categoryName: "IT",
+			oldTitle:     "Announcement system launched",
+			title:        "公告系統正式上線",
+			content:      "新版企業公告管理系統已上線，請同仁登入後確認公告並標記已讀。",
+			categoryName: "資訊",
 			status:       "published",
 			publishAt:    "now()",
 		},
 		{
-			title:        "Quarterly maintenance window",
-			content:      "Core services will be maintained this Friday evening. Please save work before the maintenance window starts.",
-			categoryName: "IT",
+			oldTitle:     "Quarterly maintenance window",
+			title:        "季度系統維護通知",
+			content:      "核心服務將於本週五晚間進行維護，請同仁在維護開始前儲存手邊工作。",
+			categoryName: "資訊",
 			status:       "scheduled",
 			publishAt:    "now() + interval '2 hours'",
 		},
 		{
-			title:        "Employee handbook draft",
-			content:      "The HR team is reviewing the next handbook update. Editors can revise this draft before publishing.",
-			categoryName: "HR",
+			oldTitle:     "Employee handbook draft",
+			title:        "員工手冊修訂草稿",
+			content:      "人資團隊正在檢視新版員工手冊內容，編輯者可在發布前持續調整此草稿。",
+			categoryName: "人事",
 			status:       "draft",
 			publishAt:    "NULL",
 		},
 		{
-			title:        "Annual health check registration",
-			content:      "Employees can register for the annual health check from Monday. Please complete the form before the deadline.",
-			categoryName: "HR",
+			oldTitle:     "Annual health check registration",
+			title:        "年度健康檢查報名",
+			content:      "年度健康檢查將於下週一開放報名，請同仁於期限前完成表單填寫。",
+			categoryName: "人事",
 			status:       "published",
 			publishAt:    "now() - interval '1 day'",
 		},
 		{
-			title:        "Town hall replay archived",
-			content:      "The previous town hall notice has been archived. Managers may still review it from the admin dashboard.",
-			categoryName: "Event",
+			oldTitle:     "Town hall replay archived",
+			title:        "全員大會回放公告已封存",
+			content:      "上一場全員大會回放公告已封存，管理者仍可在後台檢視歷史公告。",
+			categoryName: "活動",
 			status:       "archived",
 			publishAt:    "now() - interval '14 days'",
 		},
 		{
-			title:        "Product training workshop",
-			content:      "A product training workshop will be held next week. The session is open to all departments.",
-			categoryName: "Event",
+			oldTitle:     "Product training workshop",
+			title:        "產品訓練工作坊",
+			content:      "下週將舉辦產品訓練工作坊，歡迎各部門同仁報名參加。",
+			categoryName: "活動",
 			status:       "published",
 			publishAt:    "now() - interval '3 hours'",
 		},
@@ -200,11 +220,17 @@ ON CONFLICT (username) DO NOTHING`, user.username, hash, user.role, user.name)
 		if err := s.DB.QueryRowContext(ctx, `SELECT id FROM categories WHERE name = $1`, demo.categoryName).Scan(&categoryID); err != nil {
 			return err
 		}
+		if _, err := s.DB.ExecContext(ctx, `
+UPDATE announcements
+SET title = $1, content = $2, category_id = $3
+WHERE title = $4`, demo.title, demo.content, categoryID, demo.oldTitle); err != nil {
+			return err
+		}
 		query := fmt.Sprintf(`
 INSERT INTO announcements (title, content, category_id, status, publish_at, expires_at, created_by, updated_by)
 SELECT $1, $2, $3, $4, %s, NULL, $5, $5
-WHERE NOT EXISTS (SELECT 1 FROM announcements WHERE title = $1)`, demo.publishAt)
-		if _, err := s.DB.ExecContext(ctx, query, demo.title, demo.content, categoryID, demo.status, adminID); err != nil {
+WHERE NOT EXISTS (SELECT 1 FROM announcements WHERE title = $1 OR title = $6)`, demo.publishAt)
+		if _, err := s.DB.ExecContext(ctx, query, demo.title, demo.content, categoryID, demo.status, adminID, demo.oldTitle); err != nil {
 			return err
 		}
 	}
