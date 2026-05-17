@@ -92,6 +92,7 @@ function Login({ api, onLogin }) {
 function Dashboard({ api, user, onLogout }) {
   const canManage = user.role === "admin" || user.role === "editor";
   const [announcements, setAnnouncements] = useState([]);
+  const [summaryAnnouncements, setSummaryAnnouncements] = useState([]);
   const [categories, setCategories] = useState([]);
   const [users, setUsers] = useState([]);
   const [filters, setFilters] = useState({ q: "", categoryId: "", status: "", read: "" });
@@ -113,11 +114,14 @@ function Dashboard({ api, user, onLogout }) {
     setError("");
     try {
       const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ""));
+      const summaryParams = Object.fromEntries(Object.entries(filters).filter(([key, value]) => key !== "read" && value !== ""));
       const [announcementData, categoryData] = await Promise.all([
         api.announcements(params),
         api.categories(),
       ]);
+      const summaryData = filters.read ? await api.announcements(summaryParams) : announcementData;
       setAnnouncements(Array.isArray(announcementData) ? announcementData : []);
+      setSummaryAnnouncements(Array.isArray(summaryData) ? summaryData : []);
       setCategories(Array.isArray(categoryData) ? categoryData : []);
       if (user.role === "admin") setUsers(await api.users());
     } catch (err) {
@@ -203,8 +207,8 @@ function Dashboard({ api, user, onLogout }) {
             <p>{canManage ? "管理發布、排程與已讀狀態" : "查看公司公告並回報已讀"}</p>
           </div>
           <div className="stat-grid">
-            <Stat icon={<Bell />} label="總公告" value={displayedAnnouncements.length} />
-            <Stat icon={<Eye />} label="未讀" value={displayedAnnouncements.filter((a) => !a.isRead).length} />
+            <Stat icon={<Bell />} label="總公告" value={summaryAnnouncements.length} />
+            <Stat icon={<Eye />} label="未讀" value={summaryAnnouncements.filter((a) => !a.isRead).length} />
             {user.role === "admin" && <Stat icon={<Shield />} label="使用者" value={users.length} />}
           </div>
         </header>
@@ -266,7 +270,7 @@ function Dashboard({ api, user, onLogout }) {
                 <footer>
                   <span>
                     建立 {item.authorName} · 最後編輯 {item.lastEditorName || item.authorName} ·
-                    最後已讀 {item.lastReaderName ? `${item.lastReaderName} ${formatDate(item.lastReadAt)}` : "尚無"} ·
+                    最後已讀 {item.lastReadAt ? formatDate(item.lastReadAt) : "尚無"} ·
                     已讀 {item.readCount}
                   </span>
                   <div className="actions">
